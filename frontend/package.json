@@ -1,0 +1,18 @@
+{
+  "name": "posthog-frontend",
+  "version": "1.0.0",
+  "description": "Frontend with PostHog error logging and Discord integration",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "posthog-js": "^1.0.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
+
