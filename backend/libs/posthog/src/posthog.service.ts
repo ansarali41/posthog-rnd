@@ -25,8 +25,6 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
         // Validate API key
         if (!apiKey || apiKey === 'phc_your_api_key_here') {
             this.logger.warn('⚠️  PostHog API key not configured! Events will not be sent to PostHog.');
-            this.logger.warn('   Set POSTHOG_API_KEY in your .env file');
-            this.logger.warn('   Get your key from: https://app.posthog.com/project/settings');
         }
 
         this.client = new PostHog(apiKey, {
@@ -40,15 +38,10 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
         const apiKey = process.env.POSTHOG_API_KEY || 'phc_your_api_key_here';
         const host = process.env.POSTHOG_HOST || 'https://app.posthog.com';
 
-        this.logger.verbose('PostHog client initialized');
-        this.logger.verbose(`PostHog Host: ${host}`);
-
-        if (apiKey && apiKey !== 'phc_your_api_key_here') {
-            // Mask the API key for security
-            const maskedKey = apiKey.substring(0, 10) + '...' + apiKey.substring(apiKey.length - 4);
-            this.logger.verbose(`PostHog API Key: ${maskedKey}`);
-        } else {
+        if (!apiKey || apiKey === 'phc_your_api_key_here') {
             this.logger.error('❌ PostHog API key is not configured!');
+        } else {
+            this.logger.log('✅ PostHog client initialized');
         }
     }
 
@@ -68,7 +61,6 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
 
         // Don't track if API key is not configured
         if (!apiKey || apiKey === 'phc_your_api_key_here') {
-            this.logger.warn(`⚠️  Skipping PostHog event "${eventName}" - API key not configured`);
             return;
         }
 
@@ -83,15 +75,10 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
             },
         };
 
-        // Log to console
-        this.logger.log(`📊 PostHog Event: ${eventName}`);
-        this.logger.log(`   User: ${distinctId}`);
-        this.logger.log(`   Properties: ${JSON.stringify(properties || {})}`);
-
         try {
             // Track in PostHog
             this.client.capture(eventData);
-            this.logger.warn(`   ✅ Event sent to PostHog`);
+            this.logger.log(`✅ Event sent to PostHog: ${eventName}`);
         } catch (error) {
             this.logger.error(`   ❌ Failed to send event to PostHog: ${error.message}`);
         }
@@ -118,8 +105,6 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
      * @param properties - User properties
      */
     identify(distinctId: string, properties?: Record<string, any>) {
-        this.logger.verbose(`Identifying user: ${distinctId}`);
-        this.logger.verbose(`User properties: ${JSON.stringify(properties || {})}`);
         this.client.identify({
             distinctId,
             properties,
@@ -171,7 +156,7 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
                 flushAt: 1,
                 flushInterval: 5000,
             });
-            this.logger.warn('✅ PostHog events flushed');
+            this.logger.log('✅ PostHog events flushed');
         } catch (error) {
             this.logger.error(`❌ Failed to flush PostHog events: ${error.message}`);
         }
@@ -339,16 +324,12 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
             const apiKey = personalApiKey || projectApiKey; // Prefer Personal API Key for querying
             const host = process.env.POSTHOG_HOST || 'https://app.posthog.com';
 
-            this.logger.log(`🔍 Starting PostHog query for: ${method} ${path}`);
-
             if (!apiKey || apiKey === 'phc_your_api_key_here') {
                 this.logger.warn('⚠️ PostHog API key not configured - cannot query for previous calls');
                 return null;
             }
 
-            if (personalApiKey) {
-                this.logger.log(`✅ Using Personal API Key for querying (starts with: ${personalApiKey.substring(0, 10)}...)`);
-            } else if (projectApiKey) {
+            if (!personalApiKey && projectApiKey) {
                 this.logger.warn('⚠️ Using Project API Key for querying - this may fail!');
                 this.logger.warn('   PostHog Query API requires Personal API Key');
                 this.logger.warn('   Get one from: https://app.posthog.com/personal-api-keys');
@@ -361,8 +342,6 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
                 this.logger.warn('   Set POSTHOG_PROJECT_ID in your .env file');
                 return null;
             }
-
-            this.logger.log(`✅ Project ID found: ${projectId}`);
 
             // Use PostHog Query API to find previous events
             // PostHog Query API format - where clauses must be HogQL strings
@@ -381,10 +360,6 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
             // Try PostHog Query API endpoint
             const apiUrl = `${host}/api/projects/${projectId}/query/`;
 
-            this.logger.log(`🔍 Querying PostHog for previous call: ${method} ${path} (Project ID: ${projectId})`);
-            this.logger.debug(`Query URL: ${apiUrl}`);
-            this.logger.debug(`Query Body: ${JSON.stringify(queryBody, null, 2)}`);
-
             const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: {
@@ -400,24 +375,20 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
                 this.logger.warn(`Response: ${errorText}`);
 
                 // Try alternative: Events API endpoint (simpler format)
-                this.logger.log(`🔄 Trying Events API endpoint as fallback...`);
                 return await this.tryEventsApiEndpoint(host, projectId, apiKey, method, path, userId);
             }
 
             const data = await response.json();
-            this.logger.debug(`PostHog Query API Response: ${JSON.stringify(data, null, 2)}`);
 
             // PostHog Query API returns results in data.results array
             if (data.results && data.results.length > 0) {
                 const result = data.results[0];
-                this.logger.debug(`Raw result: ${JSON.stringify(result, null, 2)}`);
 
                 // Results are arrays, first element is usually the event data
                 const eventData = Array.isArray(result) ? result[0] : result;
                 const properties = eventData?.properties || eventData || {};
 
                 this.logger.log(`✅ Found previous call in PostHog: ${method} ${path}`);
-                this.logger.debug(`Previous call properties: ${JSON.stringify(properties, null, 2)}`);
 
                 return {
                     requestBody: properties.request_body,
@@ -434,7 +405,6 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
             }
 
             this.logger.warn(`⚠️ No events found in PostHog Query API response for ${method} ${path}`);
-            this.logger.debug(`Response data: ${JSON.stringify(data, null, 2)}`);
             return null;
         } catch (error) {
             this.logger.error(`Error querying PostHog for previous call: ${error.message}`);
@@ -473,8 +443,6 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
             }
 
             const apiUrl = `${host}/api/projects/${projectId}/events/?${queryParams.toString()}`;
-
-            this.logger.debug(`Trying Events API endpoint: ${apiUrl}`);
 
             const response = await fetch(apiUrl, {
                 method: 'GET',
@@ -578,16 +546,9 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
         // between calls for the previous call to be available in PostHog
         let previousCall: any = null;
         try {
-            this.logger.log(`🔍 Looking for previous call: ${details.method} ${details.path} (User: ${details.userId})`);
             previousCall = await this.getPreviousCallFromPostHog(details.method, details.path, details.userId);
-            if (previousCall) {
-                this.logger.log(`✅ Found previous call from PostHog API for ${details.method} ${details.path}`);
-                this.logger.log(`   Previous timestamp: ${previousCall.timestamp}`);
-                this.logger.log(`   Previous status: ${previousCall.statusCode}`);
-            } else {
-                this.logger.warn(`⚠️ No previous call found for ${details.method} ${details.path}`);
-                this.logger.warn(`   This may be the first call, or PostHog is still processing the previous event`);
-                this.logger.warn(`   Try waiting 10-30 seconds between API calls`);
+            if (!previousCall) {
+                this.logger.warn(`⚠️ No previous call found for ${details.method} ${details.path} - Try waiting 10-30 seconds between API calls`);
             }
         } catch (error) {
             this.logger.error(`❌ Error getting previous call from PostHog API: ${error.message}`);
@@ -653,12 +614,8 @@ export class PosthogService implements OnModuleInit, OnModuleDestroy {
             properties.changes = changes.changes;
             properties.change_summary = changes.summary;
             properties.is_first_call = false;
-            this.logger.log(`🔄 API Changes detected: ${changes.summary}`);
         } else {
             properties.is_first_call = !previousCall;
-            if (!previousCall) {
-                this.logger.log(`✨ First call to ${details.method} ${details.path}`);
-            }
         }
 
         // Add session ID if available
